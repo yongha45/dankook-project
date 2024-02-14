@@ -1,0 +1,405 @@
+library(moments)
+library(corrplot)
+library(caret)
+library(MASS)
+library(smotefamily)
+library(e1071)
+
+##데이터 불러오기
+df <- read.csv("data.csv", header=T)
+##데이터 탐색
+str(df)
+summary(df)
+
+table(df$X2)
+table(df$X3)
+table(df$X4)
+
+skewness(df)
+
+##상관관계
+cor_matrix=cor(df)
+corrplot(cor_matrix,method="circle", type = "upper", tl.pos = "d")
+corrplot(cor_matrix,add=TRUE,method="num", type = "lower",
+         diag = FALSE, tl.pos = "n", cl.pos = "n")
+
+##로그변환
+df_2<-df[,c(20:25)]
+df_2[df_2==0]<-0.001
+df_2<-log(df_2)
+##데이터 정규화
+df_3<-cbind(df[,c(3:19)],df_2)
+df_4 <- as.data.frame(apply(df_3, 2, function(x) (x - mean(x)) / sd(x)))
+##데이터 제거
+df_5<-df_4[,c(1:11,15,18:23)]
+##데이터 병합
+df_f<-cbind(as.factor(df$Y),df_5)
+colnames(df_f) <- paste("v",0:18,sep="")
+
+##전처리 후 데이터 탐색
+summary(df_f)
+
+
+
+##원본데이터
+set.seed(32180871)
+nn <- dim(df_f)[1]
+smpn <- sample(x=nn, size=nn)
+tsttrn <- ifelse(smpn<=nn/4,1, ifelse(smpn<=2*nn/4,2,ifelse(smpn<=3*nn/4,3,4)))
+
+prediction1 <- prediction2 <-prediction3 <-prediction4 <-prediction5 <-testsetCopy  <- data.frame()
+
+for (kk in 1:4) {
+  trn <- df_f[tsttrn!=kk, ]
+  tst <- df_f[tsttrn==kk, ]
+  
+  tmplda<-lda(v0~.,trn)
+  temp1 <- as.data.frame(predict(tmplda, tst[,-1])$class)
+  prediction1 <- rbind(prediction1, temp1)
+  
+  tmpqda<-qda(v0~.,trn)
+  temp2 <- as.data.frame(predict(tmpqda, tst[,-1])$class)
+  prediction2 <- rbind(prediction2, temp2)
+  
+  tmpsvm1<-tune(svm ,v0~.,data = trn, kernel="linear",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp3 <- as.data.frame(predict(tmpsvm1, tst[,-1]))
+  prediction3 <- rbind(prediction3, temp3)
+  
+  tmpsvm2<-tune(svm ,v0~.,data = trn, kernel="polynomial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp4 <- as.data.frame(predict(tmpsvm2, tst[,-1]))
+  prediction4 <- rbind(prediction4, temp4)
+  
+  tmpsvm3<-tune(svm ,v0~.,data = trn, kernel="radial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp5 <- as.data.frame(predict(tmpsvm3, tst[,-1]))
+  prediction5 <- rbind(prediction5, temp5)
+  
+  testsetCopy <- rbind(testsetCopy, as.data.frame(tst[,1]))
+}
+
+result1 <- cbind(prediction1, testsetCopy[, 1])
+names(result1) <- c("Predicted", "Actual")
+cm1<-confusionMatrix(result1$Predicted, result1$Actual,positive = "1")
+
+result2 <- cbind(prediction2, testsetCopy[, 1])
+names(result2) <- c("Predicted", "Actual")
+cm2<-confusionMatrix(result2$Predicted, result2$Actual,positive = "1")
+
+result3 <- cbind(prediction3, testsetCopy[, 1])
+names(result3) <- c("Predicted", "Actual")
+cm3<-confusionMatrix(result3$Predicted, result3$Actual,positive = "1")
+
+result4 <- cbind(prediction4, testsetCopy[, 1])
+names(result4) <- c("Predicted", "Actual")
+cm4<-confusionMatrix(result4$Predicted, result4$Actual,positive = "1")
+
+result5 <- cbind(prediction5, testsetCopy[, 1])
+names(result5) <- c("Predicted", "Actual")
+cm5<-confusionMatrix(result5$Predicted, result5$Actual,positive = "1")
+
+df_metrics <- data.frame(
+  Model = c("LDA", "QDA", "SVM_linear","SVM_polynomial","SVM_radial"),
+  Accuracy = c(cm1$overall["Accuracy"], cm2$overall["Accuracy"], cm3$overall["Accuracy"],cm4$overall["Accuracy"],cm5$overall["Accuracy"]),
+  Precision = c(cm1$byClass["Precision"], cm2$byClass["Precision"],cm3$byClass["Precision"],cm4$byClass["Precision"],cm5$byClass["Precision"]),
+  Sensitivity = c(cm1$byClass["Sensitivity"],cm2$byClass["Sensitivity"],cm3$byClass["Sensitivity"],cm4$byClass["Sensitivity"],cm5$byClass["Sensitivity"]),
+  Specificity = c(cm1$byClass["Specificity"],cm2$byClass["Specificity"],cm3$byClass["Specificity"],cm4$byClass["Specificity"],cm5$byClass["Specificity"]),
+  F1 = c(cm1$byClass["F1"],cm2$byClass["F1"],cm3$byClass["F1"],cm4$byClass["F1"],cm5$byClass["F1"]))
+
+df_metrics
+
+##랜덤다운샘플링
+df_u<-downSample(df_f[,-1],df_f[,1])
+df_u<-cbind(df_u[,19],df_u[,-19])
+colnames(df_u) <- paste("v",0:18,sep="")
+
+set.seed(32180871)
+nn <- dim(df_u)[1]
+smpn <- sample(x=nn, size=nn)
+tsttrn <- ifelse(smpn<=nn/4,1, ifelse(smpn<=2*nn/4,2,ifelse(smpn<=3*nn/4,3,4)))
+
+prediction1_u <- prediction2_u <-prediction3_u <-prediction4_u <-prediction5_u <-testsetCopy_u  <- data.frame()
+
+for (kk in 1:4) {
+  trn <- df_u[tsttrn!=kk, ]
+  tst <- df_u[tsttrn==kk, ]
+  
+  tmplda<-lda(v0~.,trn)
+  temp1 <- as.data.frame(predict(tmplda, tst[,-1])$class)
+  prediction1_u <- rbind(prediction1_u, temp1)
+  
+  tmpqda<-qda(v0~.,trn)
+  temp2 <- as.data.frame(predict(tmpqda, tst[,-1])$class)
+  prediction2_u <- rbind(prediction2_u, temp2)
+  
+  tmpsvm1<-tune(svm ,v0~.,data = trn, kernel="linear",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp3 <- as.data.frame(predict(tmpsvm1, tst[,-1]))
+  prediction3_u <- rbind(prediction3_u, temp3)
+  
+  tmpsvm2<-tune(svm ,v0~.,data = trn, kernel="polynomial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp4 <- as.data.frame(predict(tmpsvm2, tst[,-1]))
+  prediction4_u <- rbind(prediction4_u, temp4)
+  
+  tmpsvm3<-tune(svm ,v0~.,data = trn, kernel="radial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp5 <- as.data.frame(predict(tmpsvm3, tst[,-1]))
+  prediction5_u <- rbind(prediction5_u, temp5)
+  
+  testsetCopy_u <- rbind(testsetCopy_u, as.data.frame(tst[,1]))
+}
+
+result1_u <- cbind(prediction1_u, testsetCopy_u[, 1])
+names(result1_u) <- c("Predicted", "Actual")
+cm1_u<-confusionMatrix(result1_u$Predicted, result1_u$Actual,positive = "1")
+
+result2_u <- cbind(prediction2_u, testsetCopy_u[, 1])
+names(result2_u) <- c("Predicted", "Actual")
+cm2_u<-confusionMatrix(result2_u$Predicted, result2_u$Actual,positive = "1")
+
+result3_u <- cbind(prediction3_u, testsetCopy_u[, 1])
+names(result3_u) <- c("Predicted", "Actual")
+cm3_u<-confusionMatrix(result3_u$Predicted, result3_u$Actual,positive = "1")
+
+result4_u <- cbind(prediction4_u, testsetCopy_u[, 1])
+names(result4_u) <- c("Predicted", "Actual")
+cm4_u<-confusionMatrix(result4_u$Predicted, result4_u$Actual,positive = "1")
+
+result5_u <- cbind(prediction5_u, testsetCopy_u[, 1])
+names(result5_u) <- c("Predicted", "Actual")
+cm5_u<-confusionMatrix(result5_u$Predicted, result5_u$Actual,positive = "1")
+
+df_metrics_u <- data.frame(
+  Model = c("LDA", "QDA", "SVM_linear","SVM_polynomial","SVM_radial"),
+  Accuracy = c(cm1_u$overall["Accuracy"], cm2_u$overall["Accuracy"], cm3_u$overall["Accuracy"],cm4_u$overall["Accuracy"],cm5_u$overall["Accuracy"]),
+  
+  Precision = c(cm1_u$byClass["Precision"], cm2_u$byClass["Precision"],cm3_u$byClass["Precision"],cm4_u$byClass["Precision"],cm5$byClass["Precision"]),
+  Sensitivity = c(cm1_u$byClass["Sensitivity"],cm2_u$byClass["Sensitivity"],cm3_u$byClass["Sensitivity"],cm4_u$byClass["Sensitivity"],cm5_u$byClass["Sensitivity"]),Specificity = c(cm1_u$byClass["Specificity"],cm2_u$byClass["Specificity"],cm3_u$byClass["Specificity"],cm4_u$byClass["Specificity"],cm5_u$byClass["Specificity"]),
+  F1 = c(cm1_u$byClass["F1"],cm2_u$byClass["F1"],cm3_u$byClass["F1"],cm4_u$byClass["F1"],cm5_u$byClass["F1"]))
+df_metrics_u
+
+##smote
+
+dfsmote<-SMOTE(df_f[,-1],df_f[,1])
+df_s<-dfsmote$data
+df_s<-cbind(df_s[,19],df_s[,-19])
+colnames(df_s) <- paste("v",0:18,sep="")
+df_s$v0<-as.factor(df_s$v0)
+str(df_s)
+
+set.seed(32180871)
+nn <- dim(df_s)[1]
+smpn <- sample(x=nn, size=nn)
+tsttrn <- ifelse(smpn<=nn/4,1, ifelse(smpn<=2*nn/4,2,ifelse(smpn<=3*nn/4,3,4)))
+
+prediction1_s <- prediction2_s <-prediction3_s <-prediction4_s <-prediction5_s <-testsetCopy_s  <- data.frame()
+
+for (kk in 1:4) {
+  trn <- df_s[tsttrn!=kk, ]
+  tst <- df_s[tsttrn==kk, ]
+  
+  tmplda<-lda(v0~.,trn)
+  temp1 <- as.data.frame(predict(tmplda, tst[,-1])$class)
+  prediction1_s <- rbind(prediction1_s, temp1)
+  
+  tmpqda<-qda(v0~.,trn)
+  temp2 <- as.data.frame(predict(tmpqda, tst[,-1])$class)
+  prediction2_s <- rbind(prediction2_s, temp2)
+  
+  tmpsvm1<-tune(svm ,v0~.,data = trn, kernel="linear",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp3 <- as.data.frame(predict(tmpsvm1, tst[,-1]))
+  prediction3_s <- rbind(prediction3_s, temp3)
+  
+  tmpsvm2<-tune(svm ,v0~.,data = trn, kernel="polynomial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp4 <- as.data.frame(predict(tmpsvm2, tst[,-1]))
+  prediction4_s <- rbind(prediction4_s, temp4)
+  
+  tmpsvm3<-tune(svm ,v0~.,data = trn, kernel="radial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp5 <- as.data.frame(predict(tmpsvm3, tst[,-1]))
+  prediction5_s <- rbind(prediction5_s, temp5)
+  
+  testsetCopy_s <- rbind(testsetCopy_s, as.data.frame(tst[,1]))
+}
+
+result1_s <- cbind(prediction1_s, testsetCopy_s[, 1])
+names(result1_s) <- c("Predicted", "Actual")
+cm1_s<-confusionMatrix(result1_s$Predicted, result1_s$Actual,positive = "1")
+
+result2_s <- cbind(prediction2_s, testsetCopy_s[, 1])
+names(result2_s) <- c("Predicted", "Actual")
+cm2_s<-confusionMatrix(result2_s$Predicted, result2_s$Actual,positive = "1")
+
+result3_s <- cbind(prediction3_s, testsetCopy_s[, 1])
+names(result3_s) <- c("Predicted", "Actual")
+cm3_s<-confusionMatrix(result3_s$Predicted, result3_s$Actual,positive = "1")
+
+result4_s <- cbind(prediction4_s, testsetCopy_s[, 1])
+names(result4_s) <- c("Predicted", "Actual")
+cm4_s<-confusionMatrix(result4_s$Predicted, result4_s$Actual,positive = "1")
+
+result5_s <- cbind(prediction5_s, testsetCopy_s[, 1])
+names(result5_s) <- c("Predicted", "Actual")
+cm5_s<-confusionMatrix(result5_s$Predicted, result5_s$Actual,positive = "1")
+
+df_metrics_s <- data.frame(
+  Model = c("LDA", "QDA", "SVM_linear","SVM_polynomial","SVM_radial"),
+  Accuracy = c(cm1_s$overall["Accuracy"], cm2_s$overall["Accuracy"], cm3_s$overall["Accuracy"],cm4_s$overall["Accuracy"],cm5_s$overall["Accuracy"]),
+  
+  Precision = c(cm1_s$byClass["Precision"], cm2_s$byClass["Precision"],cm3_s$byClass["Precision"],cm4_s$byClass["Precision"],cm5$byClass["Precision"]),
+  Sensitivity = c(cm1_s$byClass["Sensitivity"],cm2_s$byClass["Sensitivity"],cm3_s$byClass["Sensitivity"],cm4_s$byClass["Sensitivity"],cm5_s$byClass["Sensitivity"]),Specificity = c(cm1_s$byClass["Specificity"],cm2_s$byClass["Specificity"],cm3_s$byClass["Specificity"],cm4_s$byClass["Specificity"],cm5_s$byClass["Specificity"]),
+  F1 = c(cm1_s$byClass["F1"],cm2_s$byClass["F1"],cm3_s$byClass["F1"],cm4_s$byClass["F1"],cm5_s$byClass["F1"]))
+df_metrics_s
+
+## borderline-SMOTE
+
+dfbls<-BLSMOTE(df_f[,-1],df_f[,1])
+
+df_b<-dfbls$data
+df_b<-cbind(df_b[,19],df_b[,-19])
+colnames(df_b) <- paste("v",0:18,sep="")
+df_b$v0<-as.factor(df_b$v0)
+str(df_b)
+
+set.seed(32180871)
+nn <- dim(df_b)[1]
+smpn <- sample(x=nn, size=nn)
+tsttrn <- ifelse(smpn<=nn/4,1, ifelse(smpn<=2*nn/4,2,ifelse(smpn<=3*nn/4,3,4)))
+
+prediction1_b <- prediction2_b <-prediction3_b <-prediction4_b <-prediction5_b <-testsetCopy_b  <- data.frame()
+
+for (kk in 1:4) {
+  trn <- df_b[tsttrn!=kk, ]
+  tst <- df_b[tsttrn==kk, ]
+  
+  tmplda<-lda(v0~.,trn)
+  temp1 <- as.data.frame(predict(tmplda, tst[,-1])$class)
+  prediction1_b <- rbind(prediction1_b, temp1)
+  
+  tmpqda<-qda(v0~.,trn)
+  temp2 <- as.data.frame(predict(tmpqda, tst[,-1])$class)
+  prediction2_b <- rbind(prediction2_b, temp2)
+  
+  tmpsvm1<-tune(svm ,v0~.,data = trn, kernel="linear",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp3 <- as.data.frame(predict(tmpsvm1, tst[,-1]))
+  prediction3_b <- rbind(prediction3_b, temp3)
+  
+  tmpsvm2<-tune(svm ,v0~.,data = trn, kernel="polynomial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp4 <- as.data.frame(predict(tmpsvm2, tst[,-1]))
+  prediction4_b <- rbind(prediction4_b, temp4)
+  
+  tmpsvm3<-tune(svm ,v0~.,data = trn, kernel="radial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp5 <- as.data.frame(predict(tmpsvm3, tst[,-1]))
+  prediction5_b <- rbind(prediction5_b, temp5)
+  
+  testsetCopy_b <- rbind(testsetCopy_b, as.data.frame(tst[,1]))
+}
+
+result1_b <- cbind(prediction1_b, testsetCopy_b[, 1])
+names(result1_b) <- c("Predicted", "Actual")
+cm1_b<-confusionMatrix(result1_b$Predicted, result1_b$Actual,positive = "1")
+
+result2_b <- cbind(prediction2_b, testsetCopy_b[, 1])
+names(result2_b) <- c("Predicted", "Actual")
+cm2_b<-confusionMatrix(result2_b$Predicted, result2_b$Actual,positive = "1")
+
+result3_b <- cbind(prediction3_b, testsetCopy_b[, 1])
+names(result3_b) <- c("Predicted", "Actual")
+cm3_b<-confusionMatrix(result3_b$Predicted, result3_b$Actual,positive = "1")
+
+result4_b <- cbind(prediction4_b, testsetCopy_b[, 1])
+names(result4_b) <- c("Predicted", "Actual")
+cm4_b<-confusionMatrix(result4_b$Predicted, result4_b$Actual,positive = "1")
+
+result5_b <- cbind(prediction5_b, testsetCopy_b[, 1])
+names(result5_b) <- c("Predicted", "Actual")
+cm5_b<-confusionMatrix(result5_b$Predicted, result5_b$Actual,positive = "1")
+
+df_metrics_b <- data.frame(
+  Model = c("LDA", "QDA", "SVM_linear","SVM_polynomial","SVM_radial"),
+  Accuracy = c(cm1_b$overall["Accuracy"], cm2_b$overall["Accuracy"], cm3_b$overall["Accuracy"],cm4_b$overall["Accuracy"],cm5_b$overall["Accuracy"]),
+  
+  Precision = c(cm1_b$byClass["Precision"], cm2_b$byClass["Precision"],cm3_b$byClass["Precision"],cm4_b$byClass["Precision"],cm5$byClass["Precision"]),
+  Sensitivity = c(cm1_b$byClass["Sensitivity"],cm2_b$byClass["Sensitivity"],cm3_b$byClass["Sensitivity"],cm4_b$byClass["Sensitivity"],cm5_b$byClass["Sensitivity"]),Specificity = c(cm1_b$byClass["Specificity"],cm2_b$byClass["Specificity"],cm3_b$byClass["Specificity"],cm4_b$byClass["Specificity"],cm5_b$byClass["Specificity"]),
+  F1 = c(cm1_b$byClass["F1"],cm2_b$byClass["F1"],cm3_b$byClass["F1"],cm4_b$byClass["F1"],cm5_b$byClass["F1"]))
+df_metrics_b
+
+## ADASYN
+
+dfadas<-ADAS(df_f[,-1],df_f[,1])
+
+df_a<-dfadas$data
+df_a<-cbind(df_a[,19],df_a[,-19])
+colnames(df_a) <- paste("v",0:18,sep="")
+df_a$v0<-as.factor(df_a$v0)
+str(df_a)
+
+set.seed(32180871)
+nn <- dim(df_a)[1]
+smpn <- sample(x=nn, size=nn)
+tsttrn <- ifelse(smpn<=nn/4,1, ifelse(smpn<=2*nn/4,2,ifelse(smpn<=3*nn/4,3,4)))
+
+prediction1_a <- prediction2_a <-prediction3_a <-prediction4_a <-prediction5_a <-testsetCopy_a  <- data.frame()
+
+for (kk in 1:4) {
+  trn <- df_a[tsttrn!=kk, ]
+  tst <- df_a[tsttrn==kk, ]
+  
+  tmplda<-lda(v0~.,trn)
+  temp1 <- as.data.frame(predict(tmplda, tst[,-1])$class)
+  prediction1_a <- rbind(prediction1_a, temp1)
+  
+  tmpqda<-qda(v0~.,trn)
+  temp2 <- as.data.frame(predict(tmpqda, tst[,-1])$class)
+  prediction2_a <- rbind(prediction2_a, temp2)
+  
+  tmpsvm1<-tune(svm ,v0~.,data = trn, kernel="linear",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp3 <- as.data.frame(predict(tmpsvm1, tst[,-1]))
+  prediction3_a <- rbind(prediction3_a, temp3)
+  
+  tmpsvm2<-tune(svm ,v0~.,data = trn, kernel="polynomial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp4 <- as.data.frame(predict(tmpsvm2, tst[,-1]))
+  prediction4_a <- rbind(prediction4_a, temp4)
+  
+  tmpsvm3<-tune(svm ,v0~.,data = trn, kernel="radial",ranges = list(0.01,0.1,1,10,100), tolerance=0.01)$best.model
+  temp5 <- as.data.frame(predict(tmpsvm3, tst[,-1]))
+  prediction5_a <- rbind(prediction5_a, temp5)
+  
+  testsetCopy_a <- rbind(testsetCopy_a, as.data.frame(tst[,1]))
+}
+
+result1_a <- cbind(prediction1_a, testsetCopy_a[, 1])
+names(result1_a) <- c("Predicted", "Actual")
+cm1_a<-confusionMatrix(result1_a$Predicted, result1_a$Actual,positive = "1")
+
+result2_a <- cbind(prediction2_a, testsetCopy_a[, 1])
+names(result2_a) <- c("Predicted", "Actual")
+cm2_a<-confusionMatrix(result2_a$Predicted, result2_a$Actual,positive = "1")
+
+result3_a <- cbind(prediction3_a, testsetCopy_a[, 1])
+names(result3_a) <- c("Predicted", "Actual")
+cm3_a<-confusionMatrix(result3_a$Predicted, result3_a$Actual,positive = "1")
+
+result4_a <- cbind(prediction4_a, testsetCopy_a[, 1])
+names(result4_a) <- c("Predicted", "Actual")
+cm4_a<-confusionMatrix(result4_a$Predicted, result4_a$Actual,positive = "1")
+
+result5_a <- cbind(prediction5_a, testsetCopy_a[, 1])
+names(result5_a) <- c("Predicted", "Actual")
+cm5_a<-confusionMatrix(result5_a$Predicted, result5_a$Actual,positive = "1")
+
+df_metrics_a <- data.frame(
+  Model = c("LDA", "QDA", "SVM_linear","SVM_polynomial","SVM_radial"),
+  Accuracy = c(cm1_a$overall["Accuracy"], cm2_a$overall["Accuracy"], cm3_a$overall["Accuracy"],cm4_a$overall["Accuracy"],cm5_a$overall["Accuracy"]),
+  
+  Precision = c(cm1_a$byClass["Precision"], cm2_a$byClass["Precision"],cm3_a$byClass["Precision"],cm4_a$byClass["Precision"],cm5$byClass["Precision"]),
+  Sensitivity = c(cm1_a$byClass["Sensitivity"],cm2_a$byClass["Sensitivity"],cm3_a$byClass["Sensitivity"],cm4_a$byClass["Sensitivity"],cm5_a$byClass["Sensitivity"]),Specificity = c(cm1_a$byClass["Specificity"],cm2_a$byClass["Specificity"],cm3_a$byClass["Specificity"],cm4_a$byClass["Specificity"],cm5_a$byClass["Specificity"]),
+  F1 = c(cm1_a$byClass["F1"],cm2_a$byClass["F1"],cm3_a$byClass["F1"],cm4_a$byClass["F1"],cm5_a$byClass["F1"]))
+df_metrics_a
+
+
+##원본데이터 성능
+df_metrics
+##랜덤다운샘플링 데이터 성능
+df_metrics_u
+##SMOTE 데이터 성능
+df_metrics_s
+##borderline-SMOTE 데이터 성능
+df_metrics_b
+##ADASYN 데이터 성능
+df_metrics_a

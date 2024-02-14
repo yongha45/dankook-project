@@ -1,0 +1,268 @@
+library(caret)
+library(e1071)
+options(max.print = 10000)
+##1-1
+
+setwd("C:/Users/yonghakim/Desktop/다변량 자료분석/fin")
+train <- read.csv("training.csv", header=T)
+test<-read.csv("test.csv", header=T)
+
+train$trny <- as.factor(train$trny)
+test$tsty <- as.factor(test$tsty)
+
+tr.pca1<-prcomp(train[,-1])
+tr.pca2<-prcomp(train[,-1],scale. = T)
+
+summary(tr.pca1)
+summary(tr.pca2)
+
+plot(tr.pca1$sdev^2, type = "b", xlab = "Number of Components", ylab = "eigenvalues")
+variance1<-tr.pca1$sdev[1:50]
+plot(variance1^2, type = "b", xlab = "Number of Components", ylab = "eigenvalues")
+plot(cumsum(tr.pca1$sdev^2)/sum(tr.pca1$sdev^2),type='l', xlab = "Number of Components", ylab = "Tm")
+
+plot(tr.pca2$sdev^2, type = "b", xlab = "Number of Components", ylab = "eigenvalues")
+variance2<-tr.pca2$sdev[1:100]
+plot(variance2^2, type = "b", xlab = "Number of Components", ylab = "eigenvalues")
+plot(cumsum(tr.pca2$sdev^2)/sum(tr.pca2$sdev^2),type='l', xlab = "Number of Components", ylab = "Tm")
+
+
+##1-2번
+col<-ifelse(train$trny==2,"red",ifelse(train$trny==3,"black",ifelse(train$trny==5,"yellow",ifelse(train$trny==8,"green","blue"))))
+
+par(mfrow = c(1, 3), mar = c(4, 4, 2, 1))
+plot(tr.pca1$x[,1:2],col=col)
+plot(tr.pca1$x[,c(2,3)],col=col)
+plot(tr.pca1$x[,c(1,3)],col=col)
+
+par(mfrow = c(1, 3), mar = c(4, 4, 2, 1))
+plot(tr.pca2$x[,1:2],col=col)
+plot(tr.pca2$x[,c(2,3)],col=col)
+plot(tr.pca2$x[,c(1,3)],col=col)
+
+
+
+##1-3번
+
+mean_values<-apply(train[,-1], 2, mean)
+sd_values<-apply(train[,-1], 2, sd)
+
+train_score1<-tr.pca1$x
+train_score1<-as.data.frame(train_score1)
+
+test_score1 <- as.matrix(sweep(test[,-1], 2, STATS = mean_values))%*%tr.pca1$rotation
+test_score1 <- as.data.frame(test_score1)
+
+train_score2<-tr.pca2$x
+train_score2<-as.data.frame(train_score2)
+
+test_score2 <- scale(test[,-1], center = mean_values, scale = sd_values)%*%tr.pca2$rotation
+test_score2 <- as.data.frame(test_score2)
+
+train.pcs1<-cbind(as.factor(train$trny),train_score1)
+colnames(train.pcs1) <- paste("v",0:784,sep="")
+test.pcs1<-cbind(as.factor(test$tsty),test_score1)
+colnames(test.pcs1) <- paste("v",0:784,sep="")
+
+train.pcs2<-cbind(as.factor(train$trny),train_score2)
+colnames(train.pcs2) <- paste("v",0:784,sep="")
+test.pcs2<-cbind(as.factor(test$tsty),test_score2)
+colnames(test.pcs2) <- paste("v",0:784,sep="")
+
+test_score1[1:10,1:10]
+test_score2[1:10,1:10]
+
+##2번
+
+value<-c(85,208,367,468,594,785)
+seq_along(value)
+
+value <- c(9,36, 85, 208, 367, 468, 594, 785)
+confusion_matrices1 <- list()
+
+for (i in seq_along(value)) {
+  trt <- train.pcs1[, 1:value[i]]
+  tst <- test.pcs1[, 1:value[i]]
+  
+  svm_l <- svm(x = trt[, -1], y = trt$v0, kernel = "linear")
+  pred_l <- predict(svm_l, tst[, -1])
+  
+  svm_p <- svm(x = trt[, -1], y = trt$v0, kernel = "polynomial")
+  pred_p <- predict(svm_p, tst[, -1])
+  
+  svm_r <- svm(x = trt[, -1], y = trt$v0, kernel = "radial")
+  pred_r <- predict(svm_r, tst[, -1])
+  
+  confusion_linear <- confusionMatrix(pred_l, tst$v0)
+  confusion_polynomial <- confusionMatrix(pred_p, tst$v0)
+  confusion_radial <- confusionMatrix(pred_r, tst$v0)
+  
+  confusion_matrices1[[i]] <- list(
+    linear = confusion_linear,
+    polynomial = confusion_polynomial,
+    radial = confusion_radial
+  )
+}
+
+value2<-c(11,42,92,211,366,464,589,785)
+confusion_matrices2 <- list()
+
+for (i in seq_along(value2)) {
+  trt <- train.pcs2[, 1:value2[i]]
+  tst <- test.pcs2[, 1:value2[i]]
+  
+  svm_l <- svm(x = trt[, -1], y = trt$v0, kernel = "linear")
+  pred_l <- predict(svm_l, tst[, -1])
+  
+  svm_p <- svm(x = trt[, -1], y = trt$v0, kernel = "polynomial")
+  pred_p <- predict(svm_p, tst[, -1])
+  
+  svm_r <- svm(x = trt[, -1], y = trt$v0, kernel = "radial")
+  pred_r <- predict(svm_r, tst[, -1])
+  
+  confusion_linear <- confusionMatrix(pred_l, tst$v0)
+  confusion_polynomial <- confusionMatrix(pred_p, tst$v0)
+  confusion_radial <- confusionMatrix(pred_r, tst$v0)
+  
+  confusion_matrices2[[i]] <- list(
+    linear = confusion_linear,
+    polynomial = confusion_polynomial,
+    radial = confusion_radial
+  )
+}
+
+compare_accuracy1 <- data.frame(
+  Cumulative_Proportion= c("10%", "20%", "30%","50%","70%","80%","90%","100%"),
+  Number_of_Components=c('8','35', '84', '207', '366', '467', '593', '784'),
+  svm_linear = c(confusion_matrices1[[1]]$linear$overall["Accuracy"],
+                 confusion_matrices1[[2]]$linear$overall["Accuracy"],
+                 confusion_matrices1[[3]]$linear$overall["Accuracy"],
+                 confusion_matrices1[[4]]$linear$overall["Accuracy"],
+                 confusion_matrices1[[5]]$linear$overall["Accuracy"],
+                 confusion_matrices1[[6]]$linear$overall["Accuracy"],
+                 confusion_matrices1[[7]]$linear$overall["Accuracy"],
+                 confusion_matrices1[[8]]$linear$overall["Accuracy"]),
+  svm_polynomial= c(confusion_matrices1[[1]]$polynomial$overall["Accuracy"],
+                    confusion_matrices1[[2]]$polynomial$overall["Accuracy"],
+                    confusion_matrices1[[3]]$polynomial$overall["Accuracy"],
+                    confusion_matrices1[[4]]$polynomial$overall["Accuracy"],
+                    confusion_matrices1[[5]]$polynomial$overall["Accuracy"],
+                    confusion_matrices1[[6]]$polynomial$overall["Accuracy"],
+                    confusion_matrices1[[7]]$polynomial$overall["Accuracy"],
+                    confusion_matrices1[[8]]$polynomial$overall["Accuracy"]),
+  svm_radial = c(confusion_matrices1[[1]]$radial$overall["Accuracy"],
+                 confusion_matrices1[[2]]$radial$overall["Accuracy"],
+                 confusion_matrices1[[3]]$radial$overall["Accuracy"],
+                 confusion_matrices1[[4]]$radial$overall["Accuracy"],
+                 confusion_matrices1[[5]]$radial$overall["Accuracy"],
+                 confusion_matrices1[[6]]$radial$overall["Accuracy"],
+                 confusion_matrices1[[7]]$radial$overall["Accuracy"],
+                 confusion_matrices1[[8]]$radial$overall["Accuracy"])
+  )
+
+compare_accuracy2 <- data.frame(
+  Cumulative_Proportion= c("10%", "20%", "30%","50%","70%","80%","90%","100%"),
+  Number_of_Components=c('10','41','91','210','365','463','588','784'),
+  svm_linear = c(confusion_matrices2[[1]]$linear$overall["Accuracy"],
+                 confusion_matrices2[[2]]$linear$overall["Accuracy"],
+                 confusion_matrices2[[3]]$linear$overall["Accuracy"],
+                 confusion_matrices2[[4]]$linear$overall["Accuracy"],
+                 confusion_matrices2[[5]]$linear$overall["Accuracy"],
+                 confusion_matrices2[[6]]$linear$overall["Accuracy"],
+                 confusion_matrices2[[7]]$linear$overall["Accuracy"],
+                 confusion_matrices2[[8]]$linear$overall["Accuracy"]),
+  svm_polynomial= c(confusion_matrices2[[1]]$polynomial$overall["Accuracy"],
+                    confusion_matrices2[[2]]$polynomial$overall["Accuracy"],
+                    confusion_matrices2[[3]]$polynomial$overall["Accuracy"],
+                    confusion_matrices2[[4]]$polynomial$overall["Accuracy"],
+                    confusion_matrices2[[5]]$polynomial$overall["Accuracy"],
+                    confusion_matrices2[[6]]$polynomial$overall["Accuracy"],
+                    confusion_matrices2[[7]]$polynomial$overall["Accuracy"],
+                    confusion_matrices2[[8]]$polynomial$overall["Accuracy"]),
+  svm_radial = c(confusion_matrices2[[1]]$radial$overall["Accuracy"],
+                 confusion_matrices2[[2]]$radial$overall["Accuracy"],
+                 confusion_matrices2[[3]]$radial$overall["Accuracy"],
+                 confusion_matrices2[[4]]$radial$overall["Accuracy"],
+                 confusion_matrices2[[5]]$radial$overall["Accuracy"],
+                 confusion_matrices2[[6]]$radial$overall["Accuracy"],
+                 confusion_matrices2[[7]]$radial$overall["Accuracy"],
+                 confusion_matrices2[[8]]$radial$overall["Accuracy"])
+)
+compare_accuracy1
+compare_accuracy2
+
+  
+##3번
+trnx<-train[,-1]
+  wss<-c()
+  for (k in 1:10) {
+    wbc_km <- kmeans(trnx,k)
+    wss <- c(wss, sum(wbc_km$withinss))
+  }
+  par(mfrow = c(1, 1))
+  plot(wss,type='b')
+ ##엘보우포인트 5로 확정
+  
+  
+  kmeans_clustering <- function(data, k) {
+    set.seed(1)
+    centroids <- data.frame(matrix(nrow = k, ncol = ncol(data)))  
+    dt <- data.frame(matrix(nrow = nrow(data), ncol = k))
+    cluster_assignments <- sample(1:k, nrow(data), replace = TRUE)
+    new_cluster_assignments <- rep(0, nrow(data))
+    
+    while (TRUE) {
+      for (i in 1:k) {  
+        centroids[i, ] <- colMeans(data[cluster_assignments == i, ])  
+        dt[, i] <- sqrt(rowSums(sweep(data, 2, colMeans(data[cluster_assignments == i, ]))^2))  
+      }
+      new_cluster_assignments <- apply(dt, 1, which.min)
+      if (identical(cluster_assignments, new_cluster_assignments)) {
+        break
+      }
+      cluster_assignments<- new_cluster_assignments
+    }
+    for (i in 1:k){
+      wss[i]<-sum(sweep(data[new_cluster_assignments == i, ],2,colMeans(data[new_cluster_assignments == i, ]))^2)
+    }
+    return(list(centroids = centroids, cluster_assignments = new_cluster_assignments,wss=wss))
+  } 
+  
+  set.seed(2)
+  km<-kmeans(trnx,5)
+  km_def<-kmeans_clustering(trnx,5)
+  
+  table(km$cluster, train$trny)
+  table(km_def$cluster_assignments, train$trny)
+  
+  kmeans_clustering <- function(data, k) {
+    set.seed(2)
+    centroids <- data.frame(matrix(nrow = k, ncol = ncol(data)))  
+    dt <- data.frame(matrix(nrow = nrow(data), ncol = k))
+    cluster_assignments <- sample(1:k, nrow(data), replace = TRUE)
+    new_cluster_assignments <- rep(0, nrow(data))
+    
+    while (TRUE) {
+      for (i in 1:k) {  
+        centroids[i, ] <- colMeans(data[cluster_assignments == i, ])  
+        dt[, i] <- sqrt(rowSums(sweep(data, 2, colMeans(data[cluster_assignments == i, ]))^2))  
+      }
+      new_cluster_assignments <- apply(dt, 1, which.min)
+      if (identical(cluster_assignments, new_cluster_assignments)) {
+        break
+      }
+      cluster_assignments<- new_cluster_assignments
+    }
+    for (i in 1:k){
+      wss[i]<-sum(sweep(data[new_cluster_assignments == i, ],2,colMeans(data[new_cluster_assignments == i, ]))^2)
+    }
+    return(list(centroids = centroids, cluster_assignments = new_cluster_assignments,wss=wss))
+  } 
+  
+  set.seed(2)
+  km<-kmeans(trnx,5)
+  km_def<-kmeans_clustering(trnx,5)
+  
+  table(km$cluster, train$trny)
+  table(km_def$cluster_assignments, train$trny)
+  
